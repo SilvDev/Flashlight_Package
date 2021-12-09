@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.18"
+#define PLUGIN_VERSION 		"2.19"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,11 @@
 
 ========================================================================================
 	Change Log:
+
+2.19 (09-Dec-2021)
+	- Changes to fix warnings when compiling on SourceMod 1.11.
+	- Changed command "sm_light" to accept "rand" or "random" as a parameter option to give a random light color. Requested by "NoroHime".
+	- Code change includes completely random color instead of specified from the list. Uncomment and delete other code if you want this instead.
 
 2.18 (18-Sep-2021)
 	- Menu now returns to the page it was on before selecting an option. Requested by " Shadowart".
@@ -259,8 +264,8 @@ public void OnPluginStart()
 	g_hCvarUsers.AddChangeHook(ConVarChanged_Cvars);
 
 	// Commands
-	RegAdminCmd(	"sm_lightclient",	CmdLightClient,	ADMFLAG_ROOT,	"Create and toggle flashlight attachment on the specified target. Usage: sm_lightclient <#user id|name> [R G B|red|green|blue|purple|orange|yellow|white]");
-	RegConsoleCmd(	"sm_light",			CmdLight,						"Toggle the attached flashlight.");
+	RegAdminCmd(	"sm_lightclient",	CmdLightClient,	ADMFLAG_ROOT,	"Create and toggle flashlight attachment on the specified target. Usage: sm_lightclient <#user id|name> [R G B|off|random|red|green|blue|purple|cyan|orange|white|pink|lime|maroon|teal|yellow|grey]");
+	RegConsoleCmd(	"sm_light",			CmdLight,						"Toggle the attached flashlight. Usage: sm_light [R G B|off|random|red|green|blue|purple|cyan|orange|white|pink|lime|maroon|teal|yellow|grey]");
 	RegConsoleCmd(	"sm_lightmenu",		CmdLightMenu,					"Opens the flashlight color menu.");
 
 	CreateColors();
@@ -410,6 +415,8 @@ public int Menu_Light(Menu menu, MenuAction action, int client, int index)
 			g_hMenu.DisplayAt(client, 7 * RoundToFloor(index / 7.0), 0);
 		}
 	}
+
+	return 0;
 }
 
 
@@ -439,6 +446,8 @@ public Action TimerIntro(Handle timer, any client)
 			CPrintToChat(client, "%s%T", CHAT_TAG, "Flashlight Intro", client);
 		}
 	}
+
+	return Plugin_Continue;
 }
 
 
@@ -472,7 +481,6 @@ public void ConVarChanged_LightAlpha(Handle convar, const char[] oldValue, const
 		entity = g_iLightIndex[i];
 		if( IsValidEntRef(entity) )
 		{
-			SetVariantEntity(entity);
 			SetVariantInt(g_iCvarAlpha);
 			AcceptEntityInput(entity, "distance");
 		}
@@ -752,6 +760,8 @@ public Action TimerDelayCreateLight(Handle timer, any client)
 
 		CreateLight(client);
 	}
+
+	return Plugin_Continue;
 }
 
 void CreateSpecLight(int client)
@@ -830,8 +840,8 @@ public Action CmdLightClient(int client, int args)
 			args--;
 		}
 	}
-	else
-		args = 0;
+	// else
+		// args = 0;
 
 	for( int i = 0; i < target_count; i++ )
 	{
@@ -874,14 +884,37 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 	// Toggle or set light color and turn on.
 	if( args == 1 )
 	{
-		char sTempL[12];
+		if( strncmp(sArg, "rand", 4, false) == 0 )
+		{
+			char sTempL[12];
 
-		if( g_hColors.GetString(sArg, sTempL, sizeof(sTempL)) == false )
-			sTempL = "-1 -1 -1";
+			// Completely random color
+			// Format(sTempL, sizeof(sTempL), "%d %d %d", GetRandomInt(20, 255), GetRandomInt(20, 255), GetRandomInt(20, 255));
 
-		SetVariantEntity(entity);
-		SetVariantString(sTempL);
-		AcceptEntityInput(entity, "color");
+			// Random color from list
+			int size = g_hSnapColors.Length;
+			g_hSnapColors.GetKey(GetRandomInt(0, size - 1), sTempL, sizeof(sTempL));
+			if( g_hColors.GetString(sTempL, sTempL, sizeof(sTempL)) )
+			{
+				SetVariantString(sTempL);
+				AcceptEntityInput(entity, "color");
+			}
+		}
+		else if( strcmp(sArg, "off", false) == 0 )
+		{
+			DeleteLight(target);
+			return;
+		}
+		else
+		{
+			char sTempL[12];
+
+			if( g_hColors.GetString(sArg, sTempL, sizeof(sTempL)) == false )
+				sTempL = "-1 -1 -1";
+
+			SetVariantString(sTempL);
+			AcceptEntityInput(entity, "color");
+		}
 	}
 	else if( args == 3 )
 	{
@@ -891,7 +924,6 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 		ExplodeString(sArg, " ", sSplit, sizeof(sSplit), sizeof(sSplit[]));
 		Format(sTempL, sizeof(sTempL), "%d %d %d", StringToInt(sSplit[0]), StringToInt(sSplit[1]), StringToInt(sSplit[2]));
 
-		SetVariantEntity(entity);
 		SetVariantString(sTempL);
 		AcceptEntityInput(entity, "color");
 	}
@@ -1035,12 +1067,30 @@ void CommandLight(int client, int args, const char[] sArg)
 	// Toggle or set light color and turn on.
 	if( flagc && args == 1 )
 	{
+		if( strncmp(sArg, "rand", 4, false) == 0 )
+		{
+			char sTempL[12];
+
+			// Completely random color
+			// Format(sTempL, sizeof(sTempL), "%d %d %d", GetRandomInt(20, 255), GetRandomInt(20, 255), GetRandomInt(20, 255));
+
+			// Random color from list
+			int size = g_hSnapColors.Length;
+			g_hSnapColors.GetKey(GetRandomInt(0, size - 1), sTempL, sizeof(sTempL));
+			if( g_hColors.GetString(sTempL, sTempL, sizeof(sTempL)) )
+			{
+				SetVariantString(sTempL);
+				AcceptEntityInput(entity, "color");
+			}
+		}
+	}
+	else if( flagc && args == 1 )
+	{
 		char sTempL[12];
 
 		if( g_hColors.GetString(sArg, sTempL, sizeof(sTempL)) == false )
 			sTempL = "-1 -1 -1";
 
-		SetVariantEntity(entity);
 		SetVariantString(sTempL);
 		AcceptEntityInput(entity, "color");
 	}
@@ -1052,7 +1102,6 @@ void CommandLight(int client, int args, const char[] sArg)
 		ExplodeString(sArg, " ", sSplit, sizeof(sSplit), sizeof(sSplit[]));
 		Format(sTempL, sizeof(sTempL), "%d %d %d", StringToInt(sSplit[0]), StringToInt(sSplit[1]), StringToInt(sSplit[2]));
 
-		SetVariantEntity(entity);
 		SetVariantString(sTempL);
 		AcceptEntityInput(entity, "color");
 	}
@@ -1230,6 +1279,8 @@ public Action TimerDeleteEntity(Handle timer, any entity)
 {
 	if( IsValidEntRef(entity) )
 		RemoveEntity(entity);
+
+	return Plugin_Continue;
 }
 
 
