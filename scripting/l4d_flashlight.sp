@@ -1,6 +1,6 @@
 /*
 *	Flashlight Package
-*	Copyright (C) 2021 Silvers
+*	Copyright (C) 2022 Silvers
 *
 *	This program is free software: you can redistribute it and/or modify
 *	it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.19"
+#define PLUGIN_VERSION 		"2.21"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,13 @@
 
 ========================================================================================
 	Change Log:
+
+2.21 (01-Jan-2022)
+	- Fixed not setting the default color when "l4d_flashlight_default" is "1" and "l4d_flashlight_random" is "0". Thanks to "kalmas77" for reporting.
+
+2.20 (25-Dec-2021)
+	- Fixed command "sm_light <color>" not changing the color. Thanks to "Shadowart" for reporting.
+	- Fixed cvar "l4d_flashlight_default" not restricting bots when set to "1". Thanks to "Shadowart" for reporting.
 
 2.19 (09-Dec-2021)
 	- Changes to fix warnings when compiling on SourceMod 1.11.
@@ -265,7 +272,7 @@ public void OnPluginStart()
 
 	// Commands
 	RegAdminCmd(	"sm_lightclient",	CmdLightClient,	ADMFLAG_ROOT,	"Create and toggle flashlight attachment on the specified target. Usage: sm_lightclient <#user id|name> [R G B|off|random|red|green|blue|purple|cyan|orange|white|pink|lime|maroon|teal|yellow|grey]");
-	RegConsoleCmd(	"sm_light",			CmdLight,						"Toggle the attached flashlight. Usage: sm_light [R G B|off|random|red|green|blue|purple|cyan|orange|white|pink|lime|maroon|teal|yellow|grey]");
+	RegConsoleCmd(	"sm_light",			CmdLightCommand,				"Toggle the attached flashlight. Usage: sm_light [R G B|off|random|red|green|blue|purple|cyan|orange|white|pink|lime|maroon|teal|yellow|grey]");
 	RegConsoleCmd(	"sm_lightmenu",		CmdLightMenu,					"Opens the flashlight color menu.");
 
 	CreateColors();
@@ -724,7 +731,7 @@ public Action TimerDelayCreateLight(Handle timer, any client)
 			int team = GetClientTeam(client);
 			bool fake = IsFakeClient(client);
 
-			if( team == 2 && ((g_iCvarDefault & 1 && !fake) || (g_iCvarDefault & 3 && fake)) )
+			if( team == 2 && ((g_iCvarDefault & 1 && !fake) || (g_iCvarDefault & 4 && fake)) )
 			{
 				// Set light on
 				g_iClientLight[client] = 1;
@@ -747,7 +754,7 @@ public Action TimerDelayCreateLight(Handle timer, any client)
 						color += 65536 * StringToInt(sColors[2]);
 						g_iClientColor[client] = color;
 					}
-				} else if( fake ) {
+				} else {
 					g_iClientColor[client] = g_iCvarColor;
 				}
 			}
@@ -959,7 +966,7 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 // ====================================================================================================
 //					COMMAND - sm_light
 // ====================================================================================================
-public Action CmdLight(int client, int args)
+public Action CmdLightCommand(int client, int args)
 {
 	char sArg[25];
 	GetCmdArgString(sArg, sizeof(sArg));
@@ -1065,23 +1072,20 @@ void CommandLight(int client, int args, const char[] sArg)
 		flagc = 1;
 
 	// Toggle or set light color and turn on.
-	if( flagc && args == 1 )
+	if( flagc && args == 1 && strncmp(sArg, "rand", 4, false) == 0 )
 	{
-		if( strncmp(sArg, "rand", 4, false) == 0 )
+		char sTempL[12];
+
+		// Completely random color
+		// Format(sTempL, sizeof(sTempL), "%d %d %d", GetRandomInt(20, 255), GetRandomInt(20, 255), GetRandomInt(20, 255));
+
+		// Random color from list
+		int size = g_hSnapColors.Length;
+		g_hSnapColors.GetKey(GetRandomInt(0, size - 1), sTempL, sizeof(sTempL));
+		if( g_hColors.GetString(sTempL, sTempL, sizeof(sTempL)) )
 		{
-			char sTempL[12];
-
-			// Completely random color
-			// Format(sTempL, sizeof(sTempL), "%d %d %d", GetRandomInt(20, 255), GetRandomInt(20, 255), GetRandomInt(20, 255));
-
-			// Random color from list
-			int size = g_hSnapColors.Length;
-			g_hSnapColors.GetKey(GetRandomInt(0, size - 1), sTempL, sizeof(sTempL));
-			if( g_hColors.GetString(sTempL, sTempL, sizeof(sTempL)) )
-			{
-				SetVariantString(sTempL);
-				AcceptEntityInput(entity, "color");
-			}
+			SetVariantString(sTempL);
+			AcceptEntityInput(entity, "color");
 		}
 	}
 	else if( flagc && args == 1 )
