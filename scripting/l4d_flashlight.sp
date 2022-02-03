@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.21"
+#define PLUGIN_VERSION 		"2.22"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+2.22 (15-Jan-2022)
+	- Fixed not saving light state across map changes. Thanks to "NoroHime" for reporting.
 
 2.21 (01-Jan-2022)
 	- Fixed not setting the default color when "l4d_flashlight_default" is "1" and "l4d_flashlight_random" is "0". Thanks to "kalmas77" for reporting.
@@ -45,7 +48,7 @@
 	- Code change includes completely random color instead of specified from the list. Uncomment and delete other code if you want this instead.
 
 2.18 (18-Sep-2021)
-	- Menu now returns to the page it was on before selecting an option. Requested by " Shadowart".
+	- Menu now returns to the page it was on before selecting an option. Requested by "Shadowart".
 
 2.17 (04-Aug-2021)
 	- Changed the plugin to allow bots to use the color cvar when _default cvar is enabled _random cvar was disabled.
@@ -329,7 +332,7 @@ public void OnMapEnd()
 public void OnClientDisconnect(int client)
 {
 	g_iClientColor[client] = 0;
-	g_iClientLight[client] = 0;
+	g_iClientLight[client] = 1;
 }
 
 public void OnClientCookiesCached(int client)
@@ -731,7 +734,7 @@ public Action TimerDelayCreateLight(Handle timer, any client)
 			int team = GetClientTeam(client);
 			bool fake = IsFakeClient(client);
 
-			if( team == 2 && ((g_iCvarDefault & 1 && !fake) || (g_iCvarDefault & 4 && fake)) )
+			if( team == 2 && ((g_iCvarDefault & 1 && !fake && g_iClientLight[client] != 0) || (g_iCvarDefault & 4 && fake)) )
 			{
 				// Set light on
 				g_iClientLight[client] = 1;
@@ -754,12 +757,14 @@ public Action TimerDelayCreateLight(Handle timer, any client)
 						color += 65536 * StringToInt(sColors[2]);
 						g_iClientColor[client] = color;
 					}
-				} else {
+				}
+				else if( g_iClientColor[client] == 0 )
+				{
 					g_iClientColor[client] = g_iCvarColor;
 				}
 			}
 
-			if( g_iCvarDefault & 2 && team == 3 && !fake )
+			if( g_iCvarDefault & 2 && team == 3 && !fake && g_iClientLight[client] != 0 )
 			{
 				g_iClientLight[client] = 1;
 			}
@@ -909,6 +914,9 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 		}
 		else if( strcmp(sArg, "off", false) == 0 )
 		{
+			g_iClientLight[target] = 0;
+			SetClientCookie(target, g_hCookieState, "0");
+
 			DeleteLight(target);
 			return;
 		}
@@ -946,7 +954,6 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 			IntToString(color, sNum, sizeof(sNum));
 			SetClientCookie(target, g_hCookieColor, sNum);
 		}
-
 		AcceptEntityInput(entity, "TurnOn");
 	}
 
@@ -955,7 +962,7 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 
 	if( g_iCvarSave && !IsFakeClient(target) )
 	{
-		char sNum[10];
+		char sNum[4];
 		IntToString(g_iClientLight[target], sNum, sizeof(sNum));
 		SetClientCookie(target, g_hCookieState, sNum);
 	}
@@ -1049,6 +1056,9 @@ void CommandLight(int client, int args, const char[] sArg)
 	{
 		if( strcmp(sArg, "off", false) == 0 )
 		{
+			g_iClientLight[client] = 0;
+			SetClientCookie(client, g_hCookieState, "0");
+
 			DeleteLight(client);
 			return;
 		}
@@ -1132,7 +1142,7 @@ void CommandLight(int client, int args, const char[] sArg)
 
 	if( g_iCvarSave && !IsFakeClient(client) )
 	{
-		char sNum[10];
+		char sNum[4];
 		IntToString(g_iClientLight[client], sNum, sizeof(sNum));
 		SetClientCookie(client, g_hCookieState, sNum);
 	}
