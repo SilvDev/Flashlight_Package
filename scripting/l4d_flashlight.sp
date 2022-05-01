@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.22"
+#define PLUGIN_VERSION 		"2.23"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+2.23 (01-May-2022)
+	- Added a 1 second delay before creating a light on spawn, to avoid the light flashing once. Thanks to "Ja-Forces" for reporting.
 
 2.22 (15-Jan-2022)
 	- Fixed not saving light state across map changes. Thanks to "NoroHime" for reporting.
@@ -705,7 +708,7 @@ public void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
 
 		if( g_iCvarUsers & team )
 		{
-			CreateTimer(0.5, TimerDelayCreateLight, clientID); // Needed because round_start event occurs AFTER player_spawn, so IsValidNow() fails...
+			CreateTimer(1.0, TimerDelayCreateLight, clientID); // Needed because round_start event occurs AFTER player_spawn, so IsValidNow() fails...
 		}
 	}
 }
@@ -719,7 +722,7 @@ public void Event_Team(Event event, const char[] name, bool dontBroadcast)
 		return;
 
 	DeleteLight(client);
-	CreateTimer(0.1, TimerDelayCreateLight, clientID);
+	CreateTimer(1.0, TimerDelayCreateLight, clientID);
 	CreateSpecLight(client);
 }
 
