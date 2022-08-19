@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.23"
+#define PLUGIN_VERSION 		"2.24"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,10 @@
 
 ========================================================================================
 	Change Log:
+
+2.24 (19-Aug-2022)
+	- Added cvar "l4d_flashlight_brights" to control the brightness of lights for Special Infected. Requested by "A1ekin".
+	- Changed the light position on Special Infected and Spectators in an attempt to fix lighting the area. Thanks to "A1ekin" for reporting.
 
 2.23 (01-May-2022)
 	- Added a 1 second delay before creating a light on spawn, to avoid the light flashing once. Thanks to "Ja-Forces" for reporting.
@@ -168,11 +172,11 @@
 
 
 // Cvar Handles/Variables
-ConVar g_hCvarAllow, g_hCvarAlpha, g_hCvarRandom, g_hCvarColor, g_hCvarDefault, g_hCvarFlags, g_hCvarHints, g_hCvarIntro, g_hCvarLock, g_hCvarModes, g_hCvarModesOff, g_hCvarModesTog, g_hCvarPrecache, g_hCvarSave, g_hCvarSpec, g_hCvarUsers;
+ConVar g_hCvarAllow, g_hCvarAlpha, g_hCvarAlphas, g_hCvarRandom, g_hCvarColor, g_hCvarDefault, g_hCvarFlags, g_hCvarHints, g_hCvarIntro, g_hCvarLock, g_hCvarModes, g_hCvarModesOff, g_hCvarModesTog, g_hCvarPrecache, g_hCvarSave, g_hCvarSpec, g_hCvarUsers;
 bool g_bCvarAllow, g_bMapStarted, g_bCvarLock;
 char g_sCvarCols[12];
 float g_fCvarIntro;
-int g_iCvarAlpha, g_iCvarColor, g_iCvarDefault, g_iCvarFlags, g_iCvarHints, g_iCvarRandom, g_iCvarSave, g_iCvarSpec, g_iCvarUsers;
+int g_iCvarAlpha, g_iCvarAlphas, g_iCvarColor, g_iCvarDefault, g_iCvarFlags, g_iCvarHints, g_iCvarRandom, g_iCvarSave, g_iCvarSpec, g_iCvarUsers;
 
 // Plugin Variables
 ConVar g_hCvarMPGameMode;
@@ -239,7 +243,8 @@ public void OnPluginStart()
 	LoadTranslations("core.phrases");
 
 	g_hCvarAllow =			CreateConVar(	"l4d_flashlight_allow",			"1",			"0=Plugin off, 1=Plugin on.", CVAR_FLAGS );
-	g_hCvarAlpha =			CreateConVar(	"l4d_flashlight_bright",		"255.0",		"Brightness of the light <10-255> (changes Distance value).", CVAR_FLAGS, true, 10.0, true, 255.0 );
+	g_hCvarAlpha =			CreateConVar(	"l4d_flashlight_bright",		"255.0",		"Brightness of the light for Survivors <10-255> (changes Distance value).", CVAR_FLAGS, true, 10.0, true, 255.0 );
+	g_hCvarAlphas =			CreateConVar(	"l4d_flashlight_brights",		"255.0",		"Brightness of the light for Special Infected <10-255> (changes Distance value).", CVAR_FLAGS, true, 10.0, true, 255.0 );
 	g_hCvarColor =			CreateConVar(	"l4d_flashlight_colour",		"200 20 15",	"The default light color. Three values between 0-255 separated by spaces. RGB Color255 - Red Green Blue.", CVAR_FLAGS );
 	g_hCvarDefault =		CreateConVar(	"l4d_flashlight_default",		"1",			"Turn on the light when players join. 0=Off. 1=Survivors. 2=Special Infected. 4=Survivor Bots. Add numbers together.", CVAR_FLAGS );
 	g_hCvarFlags =			CreateConVar(	"l4d_flashlight_flags",			"",				"Players with these flags may use the sm_light command. (Empty = all).", CVAR_FLAGS );
@@ -264,6 +269,7 @@ public void OnPluginStart()
 	g_hCvarModesTog.AddChangeHook(ConVarChanged_Allow);
 	g_hCvarAllow.AddChangeHook(ConVarChanged_Allow);
 	g_hCvarAlpha.AddChangeHook(ConVarChanged_LightAlpha);
+	g_hCvarAlphas.AddChangeHook(ConVarChanged_LightAlpha);
 	g_hCvarRandom.AddChangeHook(ConVarChanged_Cvars);
 	g_hCvarColor.AddChangeHook(ConVarChanged_Cvars);
 	g_hCvarDefault.AddChangeHook(ConVarChanged_Cvars);
@@ -404,7 +410,7 @@ void AddColorItem(char[] sName, const char[] sColor)
 	g_hMenu.AddItem(sColor, sName);
 }
 
-public Action CmdLightMenu(int client, int args)
+Action CmdLightMenu(int client, int args)
 {
 	if( !client )
 	{
@@ -416,7 +422,7 @@ public Action CmdLightMenu(int client, int args)
 	return Plugin_Handled;
 }
 
-public int Menu_Light(Menu menu, MenuAction action, int client, int index)
+int Menu_Light(Menu menu, MenuAction action, int client, int index)
 {
 	switch( action )
 	{
@@ -444,7 +450,7 @@ public void OnClientPutInServer(int client)
 		CreateTimer(g_fCvarIntro, TimerIntro, GetClientUserId(client));
 }
 
-public Action TimerIntro(Handle timer, any client)
+Action TimerIntro(Handle timer, any client)
 {
 	client = GetClientOfUserId(client);
 	if( client && IsClientInGame(client) )
@@ -473,20 +479,21 @@ public void OnConfigsExecuted()
 	IsAllowed();
 }
 
-public void ConVarChanged_Cvars(Handle convar, const char[] oldValue, const char[] newValue)
+void ConVarChanged_Cvars(Handle convar, const char[] oldValue, const char[] newValue)
 {
 	GetCvars();
 }
 
-public void ConVarChanged_Allow(Handle convar, const char[] oldValue, const char[] newValue)
+void ConVarChanged_Allow(Handle convar, const char[] oldValue, const char[] newValue)
 {
 	IsAllowed();
 }
 
-public void ConVarChanged_LightAlpha(Handle convar, const char[] oldValue, const char[] newValue)
+void ConVarChanged_LightAlpha(Handle convar, const char[] oldValue, const char[] newValue)
 {
 	int i, entity;
 	g_iCvarAlpha = g_hCvarAlpha.IntValue;
+	g_iCvarAlphas = g_hCvarAlphas.IntValue;
 
 	// Loop through players and change their brightness
 	for( i = 1; i <= MaxClients; i++ )
@@ -494,7 +501,7 @@ public void ConVarChanged_LightAlpha(Handle convar, const char[] oldValue, const
 		entity = g_iLightIndex[i];
 		if( IsValidEntRef(entity) )
 		{
-			SetVariantInt(g_iCvarAlpha);
+			SetVariantInt(GetClientTeam(i) == 3 ? g_iCvarAlphas : g_iCvarAlpha);
 			AcceptEntityInput(entity, "distance");
 		}
 	}
@@ -505,6 +512,7 @@ void GetCvars()
 	char sTemp[16];
 
 	g_iCvarAlpha = g_hCvarAlpha.IntValue;
+	g_iCvarAlphas = g_hCvarAlphas.IntValue;
 	g_iCvarRandom = g_hCvarRandom.IntValue;
 	g_hCvarColor.GetString(g_sCvarCols, sizeof(g_sCvarCols));
 	g_iCvarDefault = g_hCvarDefault.IntValue;
@@ -625,7 +633,7 @@ bool IsAllowedGameMode()
 	return true;
 }
 
-public void OnGamemode(const char[] output, int caller, int activator, float delay)
+void OnGamemode(const char[] output, int caller, int activator, float delay)
 {
 	if( strcmp(output, "OnCoop") == 0 )
 		g_iCurrentMode = 1;
@@ -662,12 +670,12 @@ void UnhookEvents()
 	UnhookEvent("player_team",		Event_Team);
 }
 
-public void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
+void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
 {
 	g_bRoundOver = false;
 }
 
-public void Event_RoundEnd(Event event, const char[] name, bool dontBroadcast)
+void Event_RoundEnd(Event event, const char[] name, bool dontBroadcast)
 {
 	g_bRoundOver = true;
 
@@ -675,7 +683,7 @@ public void Event_RoundEnd(Event event, const char[] name, bool dontBroadcast)
 		DeleteLight(i);
 }
 
-public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
+void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	if( !client )
@@ -685,7 +693,7 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 	CreateSpecLight(client);
 }
 
-public void Event_ItemPickup(Event event, const char[] name, bool dontBroadcast)
+void Event_ItemPickup(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
 
@@ -693,7 +701,7 @@ public void Event_ItemPickup(Event event, const char[] name, bool dontBroadcast)
 		DeleteLight(client);
 }
 
-public void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
+void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
 {
 	int clientID = event.GetInt("userid");
 	int client = GetClientOfUserId(clientID);
@@ -713,7 +721,7 @@ public void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
 	}
 }
 
-public void Event_Team(Event event, const char[] name, bool dontBroadcast)
+void Event_Team(Event event, const char[] name, bool dontBroadcast)
 {
 	int clientID = event.GetInt("userid");
 	int client = GetClientOfUserId(clientID);
@@ -726,7 +734,7 @@ public void Event_Team(Event event, const char[] name, bool dontBroadcast)
 	CreateSpecLight(client);
 }
 
-public Action TimerDelayCreateLight(Handle timer, any client)
+Action TimerDelayCreateLight(Handle timer, any client)
 {
 	client = GetClientOfUserId(client);
 
@@ -809,7 +817,7 @@ void CreateSpecLight(int client)
 //					COMMAND - sm_lightclient
 // ====================================================================================================
 // Attach flashlight onto specified client / change colors
-public Action CmdLightClient(int client, int args)
+Action CmdLightClient(int client, int args)
 {
 	if( !client )
 	{
@@ -976,7 +984,7 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 // ====================================================================================================
 //					COMMAND - sm_light
 // ====================================================================================================
-public Action CmdLightCommand(int client, int args)
+Action CmdLightCommand(int client, int args)
 {
 	char sArg[25];
 	GetCmdArgString(sArg, sizeof(sArg));
@@ -1189,7 +1197,13 @@ void CreateLight(int client)
 	}
 
 	// Position light
-	vOrigin = view_as<float>({ 0.5, -1.5, -7.5 });
+	switch( GetClientTeam(client) )
+	{
+		case 2:	vOrigin = view_as<float>({ 0.5, -1.5, -7.5 });
+		case 3: vOrigin = view_as<float>({ 0.0, 0.0, 50.0 });
+		default: vOrigin = view_as<float>({ 0.0, 0.0, 0.0 });
+	}
+
 	vAngles = view_as<float>({ -45.0, -45.0, 90.0 });
 
 	// Light_Dynamic
@@ -1204,13 +1218,8 @@ void CreateLight(int client)
 	{
 		g_iClientIndex[client] = GetClientUserId(client);
 
-		// if( !g_iClientColor[client] )
 		if( g_iClientColor[client] )
 		{
-			// g_iClientColor[client] = GetEntProp(entity, Prop_Send, "m_clrRender");
-		// }	
-		// else
-		// {
 			SetEntProp(entity, Prop_Send, "m_clrRender", g_iClientColor[client]);
 		}
 	}
@@ -1247,7 +1256,7 @@ int MakeLightDynamic(const float vOrigin[3], const float vAngles[3], int client)
 	DispatchKeyValue(entity, "_light", sTemp);
 	DispatchKeyValue(entity, "brightness", "1");
 	DispatchKeyValueFloat(entity, "spotlight_radius", 32.0);
-	DispatchKeyValueFloat(entity, "distance", float(g_iCvarAlpha));
+	DispatchKeyValueFloat(entity, "distance", GetClientTeam(client) == 3 ? float(g_iCvarAlphas) : float(g_iCvarAlpha));
 	DispatchKeyValue(entity, "style", "0");
 	DispatchSpawn(entity);
 	AcceptEntityInput(entity, "TurnOn");
@@ -1292,14 +1301,6 @@ void DeleteEntity(int entity)
 		RemoveEntity(entity);
 }
 
-public Action TimerDeleteEntity(Handle timer, any entity)
-{
-	if( IsValidEntRef(entity) )
-		RemoveEntity(entity);
-
-	return Plugin_Continue;
-}
-
 
 
 // ====================================================================================================
@@ -1340,14 +1341,14 @@ bool IsValidNow()
 // ====================================================================================================
 //					SDKHOOKS TRANSMIT
 // ====================================================================================================
-public Action Hook_SetTransmitLight(int entity, int client)
+Action Hook_SetTransmitLight(int entity, int client)
 {
 	if( g_iModelIndex[client] == EntIndexToEntRef(entity) )
 		return Plugin_Handled;
 	return Plugin_Continue;
 }
 
-public Action Hook_SetTransmitSpec(int entity, int client)
+Action Hook_SetTransmitSpec(int entity, int client)
 {
 	if( g_iLights[client] == EntIndexToEntRef(entity) )
 		return Plugin_Continue;
