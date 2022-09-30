@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.24"
+#define PLUGIN_VERSION 		"2.25"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+2.25 (30-Sep-2022)
+	- Plugin now deletes the client cookie if they no longer have access to use the flashlight. Requested by "maclarens".
 
 2.24 (19-Aug-2022)
 	- Added cvar "l4d_flashlight_brights" to control the brightness of lights for Special Infected. Requested by "A1ekin".
@@ -181,6 +184,7 @@ int g_iCvarAlpha, g_iCvarAlphas, g_iCvarColor, g_iCvarDefault, g_iCvarFlags, g_i
 // Plugin Variables
 ConVar g_hCvarMPGameMode;
 bool g_bRoundOver, g_bValidMap;
+bool g_bCookieAuth[MAXPLAYERS+1];
 char g_sPlayerModel[MAXPLAYERS+1][42];
 int g_iClientColor[MAXPLAYERS+1], g_iClientIndex[MAXPLAYERS+1], g_iClientLight[MAXPLAYERS+1], g_iLightIndex[MAXPLAYERS+1], g_iLights[MAXPLAYERS+1], g_iModelIndex[MAXPLAYERS+1];
 Handle g_hCookieColor;
@@ -342,6 +346,12 @@ public void OnClientDisconnect(int client)
 {
 	g_iClientColor[client] = 0;
 	g_iClientLight[client] = 1;
+	g_bCookieAuth[client] = false;
+}
+
+public void OnClientPostAdminCheck(int client)
+{
+	CookieAuthTest(client);
 }
 
 public void OnClientCookiesCached(int client)
@@ -367,6 +377,28 @@ public void OnClientCookiesCached(int client)
 		}
 	} else {
 		g_iClientColor[client] = 0;
+	}
+
+	CookieAuthTest(client);
+}
+
+void CookieAuthTest(int client)
+{
+	// Check if clients allowed to use hats otherwise delete cookie/hat
+	if( g_iCvarFlags && g_bCookieAuth[client] && !IsFakeClient(client) )
+	{
+		int flags = GetUserFlagBits(client);
+
+		if( !(flags & ADMFLAG_ROOT) && !(flags & g_iCvarFlags) )
+		{
+			DeleteLight(client);
+			g_iClientLight[client] = 0;
+			g_iClientColor[client] = 0;
+			SetClientCookie(client, g_hCookieColor, "0");
+			SetClientCookie(client, g_hCookieState, "0");
+		}
+	} else {
+		g_bCookieAuth[client] = true;
 	}
 }
 
