@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.25"
+#define PLUGIN_VERSION 		"2.26"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+2.26 (22-Nov-2022)
+	- No longer shows the flashlight of the player you're spectating. Thanks to "yabi" for reporting.
 
 2.25 (30-Sep-2022)
 	- Plugin now deletes the client cookie if they no longer have access to use the flashlight. Requested by "maclarens".
@@ -1375,7 +1378,7 @@ bool IsValidNow()
 // ====================================================================================================
 Action Hook_SetTransmitLight(int entity, int client)
 {
-	if( g_iModelIndex[client] == EntIndexToEntRef(entity) )
+	if( g_iModelIndex[client] == EntIndexToEntRef(entity) || GetEntPropEnt(client, Prop_Send, "m_hObserverTarget") != -1 )
 		return Plugin_Handled;
 	return Plugin_Continue;
 }
