@@ -1,6 +1,6 @@
 /*
 *	Flashlight Package
-*	Copyright (C) 2022 Silvers
+*	Copyright (C) 2023 Silvers
 *
 *	This program is free software: you can redistribute it and/or modify
 *	it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.26"
+#define PLUGIN_VERSION 		"2.27"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+2.27 (25-May-2023)
+	- Fixed the default light color not setting when new players join. Thanks to "iciaria" for reporting.
 
 2.26 (22-Nov-2022)
 	- No longer shows the flashlight of the player you're spectating. Thanks to "yabi" for reporting.
@@ -368,7 +371,7 @@ public void OnClientCookiesCached(int client)
 		{
 			g_iClientColor[client] = StringToInt(sCookie);
 		} else {
-			g_iClientColor[client] = 0;
+			g_iClientColor[client] = g_iCvarColor;
 		}
 
 		GetClientCookie(client, g_hCookieState, sCookie, sizeof(sCookie));
@@ -376,7 +379,7 @@ public void OnClientCookiesCached(int client)
 		{
 			g_iClientLight[client] = StringToInt(sCookie);
 		} else {
-			g_iClientColor[client] = 0;
+			g_iClientLight[client] = 1;
 		}
 	} else {
 		g_iClientColor[client] = 0;
@@ -485,7 +488,7 @@ public void OnClientPutInServer(int client)
 		CreateTimer(g_fCvarIntro, TimerIntro, GetClientUserId(client));
 }
 
-Action TimerIntro(Handle timer, any client)
+Action TimerIntro(Handle timer, int client)
 {
 	client = GetClientOfUserId(client);
 	if( client && IsClientInGame(client) )
@@ -588,6 +591,10 @@ void IsAllowed()
 				if( IsClientInGame(i) )
 				{
 					OnClientCookiesCached(i);
+					if( IsFakeClient(i) )
+					{
+						CreateTimer(0.1, TimerDelayCreateLight, GetClientUserId(i));
+					}
 				}
 
 				if( IsValidClient(i) )
@@ -769,7 +776,7 @@ void Event_Team(Event event, const char[] name, bool dontBroadcast)
 	CreateSpecLight(client);
 }
 
-Action TimerDelayCreateLight(Handle timer, any client)
+Action TimerDelayCreateLight(Handle timer, int client)
 {
 	client = GetClientOfUserId(client);
 
@@ -1183,6 +1190,7 @@ void CommandLight(int client, int args, const char[] sArg)
 	{
 		AcceptEntityInput(entity, "toggle");
 	}
+
 	g_iClientLight[client] = !g_iClientLight[client];
 	g_iClientColor[client] = color;
 
