@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.27"
+#define PLUGIN_VERSION 		"2.28"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+2.28 (01-Oct-2023)
+	- Now sets the clients saved color if they spawned before client prefs were loaded. Thanks to "kochiurun119" for reporting.
 
 2.27 (25-May-2023)
 	- Fixed the default light color not setting when new players join. Thanks to "iciaria" for reporting.
@@ -192,7 +195,7 @@ ConVar g_hCvarMPGameMode;
 bool g_bRoundOver, g_bValidMap;
 bool g_bCookieAuth[MAXPLAYERS+1];
 char g_sPlayerModel[MAXPLAYERS+1][42];
-int g_iClientColor[MAXPLAYERS+1], g_iClientIndex[MAXPLAYERS+1], g_iClientLight[MAXPLAYERS+1], g_iLightIndex[MAXPLAYERS+1], g_iLights[MAXPLAYERS+1], g_iModelIndex[MAXPLAYERS+1];
+int g_iClientColor[MAXPLAYERS+1], g_iClientLight[MAXPLAYERS+1], g_iLightIndex[MAXPLAYERS+1], g_iLights[MAXPLAYERS+1], g_iModelIndex[MAXPLAYERS+1];
 Handle g_hCookieColor;
 Handle g_hCookieState;
 StringMap g_hColors;
@@ -351,7 +354,7 @@ public void OnMapEnd()
 public void OnClientDisconnect(int client)
 {
 	g_iClientColor[client] = 0;
-	g_iClientLight[client] = 1;
+	g_iClientLight[client] = 0;
 	g_bCookieAuth[client] = false;
 }
 
@@ -378,11 +381,19 @@ public void OnClientCookiesCached(int client)
 		if( sCookie[0] )
 		{
 			g_iClientLight[client] = StringToInt(sCookie);
-		} else {
-			g_iClientLight[client] = 1;
 		}
 	} else {
 		g_iClientColor[client] = 0;
+	}
+
+	// Set color if they spawned before cookies were cached
+	if( g_iClientColor[client] )
+	{
+		int entity = g_iLightIndex[client];
+		if( IsValidEntRef(entity) )
+		{
+			SetEntProp(entity, Prop_Send, "m_clrRender", g_iClientColor[client]);
+		}
 	}
 
 	CookieAuthTest(client);
@@ -421,7 +432,7 @@ void CreateColors()
 	g_hMenu.ExitButton = true;
 
 	// Colors
-	g_hColors = CreateTrie();
+	g_hColors = new StringMap();
 
 	AddColorItem("red",			"255 0 0");
 	AddColorItem("green",		"0 255 0");
@@ -591,15 +602,16 @@ void IsAllowed()
 				if( IsClientInGame(i) )
 				{
 					OnClientCookiesCached(i);
+
 					if( IsFakeClient(i) )
 					{
 						CreateTimer(0.1, TimerDelayCreateLight, GetClientUserId(i));
 					}
-				}
 
-				if( IsValidClient(i) )
-				{
-					CreateLight(i);
+					else if( IsValidClient(i) )
+					{
+						CreateLight(i);
+					}
 				}
 			}
 		}
@@ -612,6 +624,7 @@ void IsAllowed()
 
 		for( int i = 1; i <= MaxClients; i++ )
 		{
+			g_iClientLight[i] = 0;
 			DeleteLight(i);
 		}
 	}
@@ -698,8 +711,8 @@ void HookEvents()
 	HookEvent("round_end",			Event_RoundEnd,		EventHookMode_PostNoCopy);
 	HookEvent("player_death",		Event_PlayerDeath);
 	HookEvent("item_pickup",		Event_ItemPickup);
-	HookEvent("player_spawn",		Event_Spawn);
-	HookEvent("player_team",		Event_Team);
+	HookEvent("player_spawn",		Event_PlayerSpawn);
+	HookEvent("player_team",		Event_PlayerTeam);
 }
 
 void UnhookEvents()
@@ -708,8 +721,8 @@ void UnhookEvents()
 	UnhookEvent("round_end",		Event_RoundEnd,		EventHookMode_PostNoCopy);
 	UnhookEvent("player_death",		Event_PlayerDeath);
 	UnhookEvent("item_pickup",		Event_ItemPickup);
-	UnhookEvent("player_spawn",		Event_Spawn);
-	UnhookEvent("player_team",		Event_Team);
+	UnhookEvent("player_spawn",		Event_PlayerSpawn);
+	UnhookEvent("player_team",		Event_PlayerTeam);
 }
 
 void Event_RoundStart(Event event, const char[] name, bool dontBroadcast)
@@ -743,7 +756,7 @@ void Event_ItemPickup(Event event, const char[] name, bool dontBroadcast)
 		DeleteLight(client);
 }
 
-void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
+void Event_PlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
 	int clientID = event.GetInt("userid");
 	int client = GetClientOfUserId(clientID);
@@ -763,7 +776,7 @@ void Event_Spawn(Event event, const char[] name, bool dontBroadcast)
 	}
 }
 
-void Event_Team(Event event, const char[] name, bool dontBroadcast)
+void Event_PlayerTeam(Event event, const char[] name, bool dontBroadcast)
 {
 	int clientID = event.GetInt("userid");
 	int client = GetClientOfUserId(clientID);
@@ -787,7 +800,7 @@ Action TimerDelayCreateLight(Handle timer, int client)
 			int team = GetClientTeam(client);
 			bool fake = IsFakeClient(client);
 
-			if( team == 2 && ((g_iCvarDefault & 1 && !fake && g_iClientLight[client] != 0) || (g_iCvarDefault & 4 && fake)) )
+			if( team == 2 && ((g_iCvarDefault & 1 && !fake) || (g_iCvarDefault & 4 && fake)) )
 			{
 				// Set light on
 				g_iClientLight[client] = 1;
@@ -817,7 +830,7 @@ Action TimerDelayCreateLight(Handle timer, int client)
 				}
 			}
 
-			if( g_iCvarDefault & 2 && team == 3 && !fake && g_iClientLight[client] != 0 )
+			if( g_iCvarDefault & 2 && team == 3 && !fake )
 			{
 				g_iClientLight[client] = 1;
 			}
@@ -1007,7 +1020,9 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 			IntToString(color, sNum, sizeof(sNum));
 			SetClientCookie(target, g_hCookieColor, sNum);
 		}
+
 		AcceptEntityInput(entity, "TurnOn");
+		g_iClientLight[client] = 0; // Gets turned on below
 	}
 
 	g_iClientColor[target] = color;
@@ -1028,6 +1043,12 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 // ====================================================================================================
 Action CmdLightCommand(int client, int args)
 {
+	if( !client )
+	{
+		ReplyToCommand(client, "Command can only be used %s", IsDedicatedServer() ? "in game on a dedicated server." : "in chat on a Listen server.");
+		return Plugin_Handled;
+	}
+
 	char sArg[25];
 	GetCmdArgString(sArg, sizeof(sArg));
 	CommandLight(client, args, sArg);
@@ -1184,7 +1205,7 @@ void CommandLight(int client, int args, const char[] sArg)
 		}
 
 		AcceptEntityInput(entity, "TurnOn");
-		g_iClientLight[client] = 0;
+		g_iClientLight[client] = 0; // Gets turned on below
 	}
 	else
 	{
@@ -1253,18 +1274,9 @@ void CreateLight(int client)
 	entity = MakeLightDynamic(vOrigin, vAngles, client);
 	g_iLightIndex[client] = EntIndexToEntRef(entity);
 
-	if( g_iClientIndex[client] == GetClientUserId(client) )
+	if( g_iClientColor[client] )
 	{
 		SetEntProp(entity, Prop_Send, "m_clrRender", g_iClientColor[client]);
-	}
-	else
-	{
-		g_iClientIndex[client] = GetClientUserId(client);
-
-		if( g_iClientColor[client] )
-		{
-			SetEntProp(entity, Prop_Send, "m_clrRender", g_iClientColor[client]);
-		}
 	}
 
 	if( g_iClientLight[client] == 1 )
