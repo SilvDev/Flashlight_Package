@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.28"
+#define PLUGIN_VERSION 		"2.29"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,12 @@
 
 ========================================================================================
 	Change Log:
+
+2.29 (20-Dec-2023)
+	- Added cvar "l4d_flashlight_rainbow" to allow or disallow rainbow changing colors.
+	- Added cvar "l4d_flashlight_rainbows" to set the rainbow color speed.
+	- Added command "sm_lightbow" to enable/disable the rainbow color.
+	- Requested by "JustMadMan". Thanks to "King_OxO" for the code this was based on.
 
 2.28 (01-Oct-2023)
 	- Now sets the clients saved color if they spawned before client prefs were loaded. Thanks to "kochiurun119" for reporting.
@@ -184,16 +190,16 @@
 
 
 // Cvar Handles/Variables
-ConVar g_hCvarAllow, g_hCvarAlpha, g_hCvarAlphas, g_hCvarRandom, g_hCvarColor, g_hCvarDefault, g_hCvarFlags, g_hCvarHints, g_hCvarIntro, g_hCvarLock, g_hCvarModes, g_hCvarModesOff, g_hCvarModesTog, g_hCvarPrecache, g_hCvarSave, g_hCvarSpec, g_hCvarUsers;
+ConVar g_hCvarAllow, g_hCvarAlpha, g_hCvarAlphas, g_hCvarRainbow, g_hCvarRainbows, g_hCvarRandom, g_hCvarColor, g_hCvarDefault, g_hCvarFlags, g_hCvarHints, g_hCvarIntro, g_hCvarLock, g_hCvarModes, g_hCvarModesOff, g_hCvarModesTog, g_hCvarPrecache, g_hCvarSave, g_hCvarSpec, g_hCvarUsers;
 bool g_bCvarAllow, g_bMapStarted, g_bCvarLock;
 char g_sCvarCols[12];
-float g_fCvarIntro;
-int g_iCvarAlpha, g_iCvarAlphas, g_iCvarColor, g_iCvarDefault, g_iCvarFlags, g_iCvarHints, g_iCvarRandom, g_iCvarSave, g_iCvarSpec, g_iCvarUsers;
+float g_fCvarIntro, g_fCvarRainbows;
+int g_iCvarAlpha, g_iCvarAlphas, g_iCvarColor, g_iCvarDefault, g_iCvarFlags, g_iCvarHints, g_iCvarRainbow, g_iCvarRandom, g_iCvarSave, g_iCvarSpec, g_iCvarUsers;
 
 // Plugin Variables
 ConVar g_hCvarMPGameMode;
 bool g_bRoundOver, g_bValidMap;
-bool g_bCookieAuth[MAXPLAYERS+1];
+bool g_bCookieAuth[MAXPLAYERS+1], g_bRainbow[MAXPLAYERS+1];
 char g_sPlayerModel[MAXPLAYERS+1][42];
 int g_iClientColor[MAXPLAYERS+1], g_iClientLight[MAXPLAYERS+1], g_iLightIndex[MAXPLAYERS+1], g_iLights[MAXPLAYERS+1], g_iModelIndex[MAXPLAYERS+1];
 Handle g_hCookieColor;
@@ -268,6 +274,8 @@ public void OnPluginStart()
 	g_hCvarModesOff =		CreateConVar(	"l4d_flashlight_modes_off",		"",				"Turn off the plugin in these game modes, separate by commas (no spaces). (Empty = none).", CVAR_FLAGS );
 	g_hCvarModesTog =		CreateConVar(	"l4d_flashlight_modes_tog",		"0",			"Turn on the plugin in these game modes. 0=All, 1=Coop, 2=Survival, 4=Versus, 8=Scavenge. Add numbers together.", CVAR_FLAGS );
 	g_hCvarPrecache =		CreateConVar(	"l4d_flashlight_precach",		"c1m3_mall",	"Empty = Allow all. 0=Block on all maps. Prevent displaying the model on these maps, separate by commas (no spaces).", CVAR_FLAGS );
+	g_hCvarRainbow =		CreateConVar(	"l4d_flashlight_rainbow",		"3",			"Allow players to use the sm_lightbow command for rainbow changing colors. 0=Off. 1=Survivors. 2=Special Infected. 3=Both.", CVAR_FLAGS );
+	g_hCvarRainbows =		CreateConVar(	"l4d_flashlight_rainbows",		"1.0",			"Speed of rainbow colors changing. Smaller value = slower. Larger value = faster.", CVAR_FLAGS );
 	g_hCvarRandom =			CreateConVar(	"l4d_flashlight_random",		"2",			"Give random colors on spawn? 0=Use color cvar. 1=Give Survivor bots random colors if enabled by the _default cvar. 2=Give real players random colors (unless save enabled). 3=Both.", CVAR_FLAGS );
 	g_hCvarSave =			CreateConVar(	"l4d_flashlight_save",			"1",			"0=Off, 1=Save client preferences for flashlight color and state.", CVAR_FLAGS );
 	g_hCvarSpec =			CreateConVar(	"l4d_flashlight_spec",			"7",			"0=Off, 1=Spectators, 2=Survivors, 4=Infected, 7=All. Give personal flashlights when dead which only they can see.", CVAR_FLAGS );
@@ -283,6 +291,8 @@ public void OnPluginStart()
 	g_hCvarAllow.AddChangeHook(ConVarChanged_Allow);
 	g_hCvarAlpha.AddChangeHook(ConVarChanged_LightAlpha);
 	g_hCvarAlphas.AddChangeHook(ConVarChanged_LightAlpha);
+	g_hCvarRainbow.AddChangeHook(ConVarChanged_Cvars);
+	g_hCvarRainbows.AddChangeHook(ConVarChanged_Cvars);
 	g_hCvarRandom.AddChangeHook(ConVarChanged_Cvars);
 	g_hCvarColor.AddChangeHook(ConVarChanged_Cvars);
 	g_hCvarDefault.AddChangeHook(ConVarChanged_Cvars);
@@ -297,6 +307,7 @@ public void OnPluginStart()
 
 	// Commands
 	RegAdminCmd(	"sm_lightclient",	CmdLightClient,	ADMFLAG_ROOT,	"Create and toggle flashlight attachment on the specified target. Usage: sm_lightclient <#user id|name> [R G B|off|random|red|green|blue|purple|cyan|orange|white|pink|lime|maroon|teal|yellow|grey]");
+	RegConsoleCmd(	"sm_lightbow",		CmdLightRainbow,				"Toggle the attached flashlight with rainbow changing colors.");
 	RegConsoleCmd(	"sm_light",			CmdLightCommand,				"Toggle the attached flashlight. Usage: sm_light [R G B|off|random|red|green|blue|purple|cyan|orange|white|pink|lime|maroon|teal|yellow|grey]");
 	RegConsoleCmd(	"sm_lightmenu",		CmdLightMenu,					"Opens the flashlight color menu.");
 
@@ -356,6 +367,7 @@ public void OnClientDisconnect(int client)
 	g_iClientColor[client] = 0;
 	g_iClientLight[client] = 0;
 	g_bCookieAuth[client] = false;
+	g_bRainbow[client] = false;
 }
 
 public void OnClientPostAdminCheck(int client)
@@ -562,6 +574,8 @@ void GetCvars()
 
 	g_iCvarAlpha = g_hCvarAlpha.IntValue;
 	g_iCvarAlphas = g_hCvarAlphas.IntValue;
+	g_iCvarRainbow = g_hCvarRainbow.IntValue;
+	g_fCvarRainbows = g_hCvarRainbows.FloatValue;
 	g_iCvarRandom = g_hCvarRandom.IntValue;
 	g_hCvarColor.GetString(g_sCvarCols, sizeof(g_sCvarCols));
 	g_iCvarDefault = g_hCvarDefault.IntValue;
@@ -940,12 +954,12 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 	}
 
 	// Delete flashlight and re-make if the players model has changed, CSM plugin fix...
-	char sTempStr[42];
+	static char sTempStr[42];
 	GetClientModel(target, sTempStr, sizeof(sTempStr));
 	if( strcmp(g_sPlayerModel[target], sTempStr) != 0 )
 	{
 		DeleteLight(target);
-		strcopy(g_sPlayerModel[target], sizeof(sTempStr), sTempStr);
+		strcopy(g_sPlayerModel[target], sizeof(g_sPlayerModel[]), sTempStr);
 	}
 
 	// Check if they have a light, or try to create
@@ -1025,6 +1039,9 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 		g_iClientLight[client] = 0; // Gets turned on below
 	}
 
+	SDKUnhook(client, SDKHook_PreThinkPost, OnRainbowPlayer);
+
+	g_bRainbow[target] = false;
 	g_iClientColor[target] = color;
 	g_iClientLight[target] = !g_iClientLight[target];
 
@@ -1034,6 +1051,60 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 		IntToString(g_iClientLight[target], sNum, sizeof(sNum));
 		SetClientCookie(target, g_hCookieState, sNum);
 	}
+}
+
+
+
+// ====================================================================================================
+//					COMMAND - sm_lightbow
+// ====================================================================================================
+Action CmdLightRainbow(int client, int args)
+{
+	if( !client )
+	{
+		ReplyToCommand(client, "Command can only be used %s", IsDedicatedServer() ? "in game on a dedicated server." : "in chat on a Listen server.");
+		return Plugin_Handled;
+	}
+
+	SDKUnhook(client, SDKHook_PreThinkPost, OnRainbowPlayer);
+
+	if( g_bCvarAllow && g_bMapStarted && !g_bRoundOver && g_iCvarRainbow )
+	{
+		int team = GetClientTeam(client) - 1;
+
+		if( g_iCvarRainbow == 3 || g_iCvarRainbow == team )
+		{
+			DeleteLight(client);
+
+			CommandLight(client, 0, "", true);
+		}
+	}
+
+	return Plugin_Handled;
+}
+
+void OnRainbowPlayer(int client)
+{
+	if( !g_bCvarAllow || !g_bMapStarted || g_bRoundOver || !g_iCvarRainbow || !IsClientInGame(client) || !IsPlayerAlive(client) || !IsValidEntRef(g_iLightIndex[client]) )
+	{
+		SDKUnhook(client, SDKHook_PreThinkPost, OnRainbowPlayer);
+	}
+
+	int color[3];
+	float time = client + g_fCvarRainbows * GetGameTime();
+	color[0] = RoundToNearest(Cosine(time + 1) * 127.5 + 127.5);
+	color[1] = RoundToNearest(Cosine(time + 3) * 127.5 + 127.5);
+	color[2] = RoundToNearest(Cosine(time + 5) * 127.5 + 127.5);
+
+	// Light Color
+	static char sBuffer[16];
+	FormatEx(sBuffer, sizeof(sBuffer), "%d %d %d %d", GetRandomColor(color[2]), GetRandomColor(color[1]), GetRandomColor(color[0]), 255);
+	DispatchKeyValue(g_iLightIndex[client], "_light", sBuffer);
+}
+
+stock int GetRandomColor(int color)
+{
+	return (color == -1 || color < 0 || color > 255) ? GetRandomInt(0, 255) : color;
 }
 
 
@@ -1055,8 +1126,11 @@ Action CmdLightCommand(int client, int args)
 	return Plugin_Handled;
 }
 
-void CommandLight(int client, int args, const char[] sArg)
+void CommandLight(int client, int args, const char[] sArg, bool rainbow = false)
 {
+	bool oldBow = g_bRainbow[client];
+	g_bRainbow[client] = rainbow;
+
 	// Must be valid
 	if( !client || !IsClientInGame(client) )
 		return;
@@ -1117,12 +1191,12 @@ void CommandLight(int client, int args, const char[] sArg)
 	}
 
 	// Delete flashlight and re-make if the players model has changed, CSM plugin fix...
-	char sTempStr[42];
+	static char sTempStr[42];
 	GetClientModel(client, sTempStr, sizeof(sTempStr));
 	if( strcmp(g_sPlayerModel[client], sTempStr) != 0 )
 	{
 		DeleteLight(client);
-		strcopy(g_sPlayerModel[client], sizeof(sTempStr), sTempStr);
+		strcopy(g_sPlayerModel[client], sizeof(g_sPlayerModel[]), sTempStr); 
 	}
 
 	// Off option
@@ -1194,22 +1268,41 @@ void CommandLight(int client, int args, const char[] sArg)
 		AcceptEntityInput(entity, "color");
 	}
 
-	int color = GetEntProp(entity, Prop_Send, "m_clrRender");
-	if( color != g_iClientColor[client] )
-	{
-		if( g_iCvarSave && !IsFakeClient(client) )
-		{
-			char sNum[10];
-			IntToString(color, sNum, sizeof(sNum));
-			SetClientCookie(client, g_hCookieColor, sNum);
-		}
+	int color;
 
-		AcceptEntityInput(entity, "TurnOn");
-		g_iClientLight[client] = 0; // Gets turned on below
+	if( rainbow )
+	{
+		AcceptEntityInput(entity, "toggle");
+		color = g_iClientColor[client];
 	}
 	else
 	{
-		AcceptEntityInput(entity, "toggle");
+		if( !oldBow )
+		{
+			color = GetEntProp(entity, Prop_Send, "m_clrRender");
+			if( color != g_iClientColor[client] )
+			{
+				if( g_iCvarSave && !IsFakeClient(client) )
+				{
+					char sNum[10];
+					IntToString(color, sNum, sizeof(sNum));
+					SetClientCookie(client, g_hCookieColor, sNum);
+				}
+
+				AcceptEntityInput(entity, "TurnOn");
+				g_iClientLight[client] = 0; // Gets turned on below
+			}
+			else
+			{
+				AcceptEntityInput(entity, "toggle");
+			}
+		}
+		else
+		{
+			color = g_iClientColor[client];
+			SetEntProp(entity, Prop_Send, "m_clrRender", color);
+			AcceptEntityInput(entity, "toggle");
+		}
 	}
 
 	g_iClientLight[client] = !g_iClientLight[client];
@@ -1220,6 +1313,13 @@ void CommandLight(int client, int args, const char[] sArg)
 		char sNum[4];
 		IntToString(g_iClientLight[client], sNum, sizeof(sNum));
 		SetClientCookie(client, g_hCookieState, sNum);
+	}
+
+	SDKUnhook(client, SDKHook_PreThinkPost, OnRainbowPlayer);
+
+	if( rainbow )
+	{
+		SDKHook(client, SDKHook_PreThinkPost, OnRainbowPlayer);
 	}
 }
 
