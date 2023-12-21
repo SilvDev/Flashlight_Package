@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.29"
+#define PLUGIN_VERSION 		"2.30"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,11 @@
 
 ========================================================================================
 	Change Log:
+
+2.30 (21-Dec-2023)
+	- The rainbow activated state will now save and load.
+	- Commands "sm_light" and "sm_lightclient" now accept the option "bow" to turn on the rainbow.
+	- Thanks to "Hawkins" and "JustMadMan" for help testing.
 
 2.29 (20-Dec-2023)
 	- Added cvar "l4d_flashlight_rainbow" to allow or disallow rainbow changing colors.
@@ -204,6 +209,7 @@ char g_sPlayerModel[MAXPLAYERS+1][42];
 int g_iClientColor[MAXPLAYERS+1], g_iClientLight[MAXPLAYERS+1], g_iLightIndex[MAXPLAYERS+1], g_iLights[MAXPLAYERS+1], g_iModelIndex[MAXPLAYERS+1];
 Handle g_hCookieColor;
 Handle g_hCookieState;
+Handle g_hCookieBows;
 StringMap g_hColors;
 StringMapSnapshot g_hSnapColors;
 Menu g_hMenu;
@@ -306,15 +312,16 @@ public void OnPluginStart()
 	g_hCvarUsers.AddChangeHook(ConVarChanged_Cvars);
 
 	// Commands
-	RegAdminCmd(	"sm_lightclient",	CmdLightClient,	ADMFLAG_ROOT,	"Create and toggle flashlight attachment on the specified target. Usage: sm_lightclient <#user id|name> [R G B|off|random|red|green|blue|purple|cyan|orange|white|pink|lime|maroon|teal|yellow|grey]");
+	RegAdminCmd(	"sm_lightclient",	CmdLightClient,	ADMFLAG_ROOT,	"Create and toggle flashlight attachment on the specified target. Usage: sm_lightclient <#user id|name> [R G B|off|random|bow|red|green|blue|purple|cyan|orange|white|pink|lime|maroon|teal|yellow|grey]");
 	RegConsoleCmd(	"sm_lightbow",		CmdLightRainbow,				"Toggle the attached flashlight with rainbow changing colors.");
-	RegConsoleCmd(	"sm_light",			CmdLightCommand,				"Toggle the attached flashlight. Usage: sm_light [R G B|off|random|red|green|blue|purple|cyan|orange|white|pink|lime|maroon|teal|yellow|grey]");
+	RegConsoleCmd(	"sm_light",			CmdLightCommand,				"Toggle the attached flashlight. Usage: sm_light [R G B|off|random|bow|red|green|blue|purple|cyan|orange|white|pink|lime|maroon|teal|yellow|grey]");
 	RegConsoleCmd(	"sm_lightmenu",		CmdLightMenu,					"Opens the flashlight color menu.");
 
 	CreateColors();
 
 	g_hCookieColor = RegClientCookie("l4d_flashlight", "Flashlight Color", CookieAccess_Protected);
 	g_hCookieState = RegClientCookie("l4d_flashlights", "Flashlight State", CookieAccess_Protected);
+	g_hCookieBows = RegClientCookie("l4d_flashlightbow", "Flashlight Rainbow", CookieAccess_Protected);
 }
 
 public void OnPluginEnd()
@@ -381,6 +388,7 @@ public void OnClientCookiesCached(int client)
 	{
 		char sCookie[10];
 
+		// Color
 		GetClientCookie(client, g_hCookieColor, sCookie, sizeof(sCookie));
 		if( sCookie[0] )
 		{
@@ -389,20 +397,32 @@ public void OnClientCookiesCached(int client)
 			g_iClientColor[client] = g_iCvarColor;
 		}
 
+		// State on/off
 		GetClientCookie(client, g_hCookieState, sCookie, sizeof(sCookie));
 		if( sCookie[0] )
 		{
 			g_iClientLight[client] = StringToInt(sCookie);
+		}
+
+		// State rainbow
+		GetClientCookie(client, g_hCookieBows, sCookie, sizeof(sCookie));
+		if( sCookie[0] )
+		{
+			g_bRainbow[client] = !!StringToInt(sCookie);
 		}
 	} else {
 		g_iClientColor[client] = 0;
 	}
 
 	// Set color if they spawned before cookies were cached
-	if( g_iClientColor[client] )
+	int entity = g_iLightIndex[client];
+	if( IsValidEntRef(entity) )
 	{
-		int entity = g_iLightIndex[client];
-		if( IsValidEntRef(entity) )
+		if( g_bRainbow[client] && (g_iCvarRainbow == 3 || g_iCvarRainbow == GetClientTeam(client) - 1) )
+		{
+			SDKHook(client, SDKHook_PreThinkPost, OnRainbowPlayer);
+		}
+		else if( g_iClientColor[client] )
 		{
 			SetEntProp(entity, Prop_Send, "m_clrRender", g_iClientColor[client]);
 		}
@@ -896,7 +916,7 @@ Action CmdLightClient(int client, int args)
 
 	if( args == 0 )
 	{
-		ReplyToCommand(client, "[Flashlight] Usage: sm_lightclient <#user id|name> [R G B|red|green|blue|purple|orange|yellow|white]");
+		ReplyToCommand(client, "[Flashlight] Usage: sm_lightclient <#user id|name> [R G B|off|random|bow|red|green|blue|purple|orange|yellow|white]");
 		return Plugin_Handled;
 	}
 
@@ -1000,6 +1020,22 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 			DeleteLight(target);
 			return;
 		}
+		else if( g_iCvarRainbow && strcmp(sArg, "bow", false) == 0 )
+		{
+			if( g_iCvarRainbow == 3 || g_iCvarRainbow == GetClientTeam(target) - 1 )
+			{
+				g_bRainbow[target] = true;
+
+				if( g_iCvarSave && !IsFakeClient(client) )
+				{
+					SetClientCookie(target, g_hCookieBows, "1");
+				}
+
+				SDKHook(target, SDKHook_PreThinkPost, OnRainbowPlayer);
+			}
+
+			return;
+		}
 		else
 		{
 			char sTempL[12];
@@ -1050,6 +1086,7 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 		char sNum[4];
 		IntToString(g_iClientLight[target], sNum, sizeof(sNum));
 		SetClientCookie(target, g_hCookieState, sNum);
+		SetClientCookie(target, g_hCookieBows, "0");
 	}
 }
 
@@ -1070,9 +1107,7 @@ Action CmdLightRainbow(int client, int args)
 
 	if( g_bCvarAllow && g_bMapStarted && !g_bRoundOver && g_iCvarRainbow )
 	{
-		int team = GetClientTeam(client) - 1;
-
-		if( g_iCvarRainbow == 3 || g_iCvarRainbow == team )
+		if( g_iCvarRainbow == 3 || g_iCvarRainbow == GetClientTeam(client) - 1 )
 		{
 			DeleteLight(client);
 
@@ -1246,6 +1281,10 @@ void CommandLight(int client, int args, const char[] sArg, bool rainbow = false)
 			AcceptEntityInput(entity, "color");
 		}
 	}
+	else if( flagc && args == 1 && strncmp(sArg, "bow", 4, false) == 0 )
+	{
+		rainbow = true;
+	}
 	else if( flagc && args == 1 )
 	{
 		char sTempL[12];
@@ -1270,8 +1309,17 @@ void CommandLight(int client, int args, const char[] sArg, bool rainbow = false)
 
 	int color;
 
-	if( rainbow )
+	if( rainbow && (g_iCvarRainbow == 3 || g_iCvarRainbow == GetClientTeam(client) - 1) )
 	{
+		g_bRainbow[client] = true;
+
+		if( g_iCvarSave )
+		{
+			SetClientCookie(client, g_hCookieBows, "1");
+		}
+
+		SDKHook(client, SDKHook_PreThinkPost, OnRainbowPlayer);
+
 		AcceptEntityInput(entity, "toggle");
 		color = g_iClientColor[client];
 	}
@@ -1301,7 +1349,9 @@ void CommandLight(int client, int args, const char[] sArg, bool rainbow = false)
 		{
 			color = g_iClientColor[client];
 			SetEntProp(entity, Prop_Send, "m_clrRender", color);
-			AcceptEntityInput(entity, "toggle");
+
+			AcceptEntityInput(entity, "TurnOn");
+			g_iClientLight[client] = 0; // Gets turned on below
 		}
 	}
 
@@ -1374,7 +1424,11 @@ void CreateLight(int client)
 	entity = MakeLightDynamic(vOrigin, vAngles, client);
 	g_iLightIndex[client] = EntIndexToEntRef(entity);
 
-	if( g_iClientColor[client] )
+	if( g_bRainbow[client] )
+	{
+		SDKHook(client, SDKHook_PreThinkPost, OnRainbowPlayer);
+	}
+	else if( g_iClientColor[client] )
 	{
 		SetEntProp(entity, Prop_Send, "m_clrRender", g_iClientColor[client]);
 	}
