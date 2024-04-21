@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.31"
+#define PLUGIN_VERSION 		"2.32"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+2.32 (21-Apr-2024)
+	- Fixed the "l4d_flashlight_random" cvar not giving bots random colors if saving was enabled. Thanks to "kochiurun119" for reporting.
 
 2.31 (23-Jan-2024)
 	- Fixed various issues when using the commands due to the rainbow update. Should toggle, turn off or change correctly for all commands.
@@ -197,6 +200,8 @@
 
 #define ATTACH_GRENADE		"grenade"
 #define MODEL_LIGHT			"models/props_lighting/flashlight_dropped_01.mdl"
+
+#define COMPLETELY_RANDOM	0 // Set this to 1 for completely random colors, or set to 1 to randomly pick from the preset list
 
 
 // Cvar Handles/Variables
@@ -836,10 +841,11 @@ Action TimerDelayCreateLight(Handle timer, int client)
 
 	if( client && IsValidNow() && IsValidClient(client) ) // Re-create attached flashlight
 	{
-		if( g_iCvarDefault && (!g_iCvarSave || !g_bCookieAuth[client]) )
+		bool fake = IsFakeClient(client);
+
+		if( g_iCvarDefault && (!g_iCvarSave || !g_bCookieAuth[client]) || fake)
 		{
 			int team = GetClientTeam(client);
-			bool fake = IsFakeClient(client);
 
 			if( team == 2 && ((g_iCvarDefault & 1 && !fake) || (g_iCvarDefault & 4 && fake)) )
 			{
@@ -849,21 +855,33 @@ Action TimerDelayCreateLight(Handle timer, int client)
 				// Give random light to clients if not saved or bots if allowed
 				if( (g_iCvarRandom & 1 && fake) || (g_iCvarRandom & 2 && !fake && (!g_iCvarSave || g_iClientColor[client] == 0)) )
 				{
-					int size = g_hSnapColors.Length;
-
-					char sTemp[32];
-					g_hSnapColors.GetKey(GetRandomInt(0, size - 1), sTemp, sizeof(sTemp));
-					if( g_hColors.GetString(sTemp, sTemp, sizeof(sTemp)) )
-					{
-						char sColors[3][4];
+					#if COMPLETELY_RANDOM
 						int color;
 
-						ExplodeString(sTemp, " ", sColors, sizeof(sColors), sizeof(sColors[]));
-						color = StringToInt(sColors[0]);
-						color += 256 * StringToInt(sColors[1]);
-						color += 65536 * StringToInt(sColors[2]);
+						color = GetRandomInt(50, 255);
+						color += 256 * GetRandomInt(50, 255);
+						color += 65536 * GetRandomInt(50, 255);
 						g_iClientColor[client] = color;
-					}
+
+						delete g_hSnapColors;
+					#else
+						int size = g_hSnapColors.Length;
+
+						char sTemp[32];
+
+						g_hSnapColors.GetKey(GetRandomInt(0, size - 1), sTemp, sizeof(sTemp));
+						if( g_hColors.GetString(sTemp, sTemp, sizeof(sTemp)) )
+						{
+							char sColors[3][4];
+							int color;
+
+							ExplodeString(sTemp, " ", sColors, sizeof(sColors), sizeof(sColors[]));
+							color = StringToInt(sColors[0]);
+							color += 256 * StringToInt(sColors[1]);
+							color += 65536 * StringToInt(sColors[2]);
+							g_iClientColor[client] = color;
+						}
+					#endif
 				}
 				else if( g_iClientColor[client] == 0 )
 				{
@@ -1030,18 +1048,23 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 	{
 		char sTempL[12];
 
-		// Completely random color
-		// Format(sTempL, sizeof(sTempL), "%d %d %d", GetRandomInt(20, 255), GetRandomInt(20, 255), GetRandomInt(20, 255));
-
-		// Random color from list
-		int size = g_hSnapColors.Length;
-		g_hSnapColors.GetKey(GetRandomInt(0, size - 1), sTempL, sizeof(sTempL));
-		if( g_hColors.GetString(sTempL, sTempL, sizeof(sTempL)) )
-		{
+		#if COMPLETELY_RANDOM
+			// Completely random color
+			Format(sTempL, sizeof(sTempL), "%d %d %d", GetRandomInt(20, 255), GetRandomInt(20, 255), GetRandomInt(20, 255));
 			SetVariantString(sTempL);
 			AcceptEntityInput(entity, "color");
 			setCol = true;
-		}
+		#else
+			// Random color from list
+			int size = g_hSnapColors.Length;
+			g_hSnapColors.GetKey(GetRandomInt(0, size - 1), sTempL, sizeof(sTempL));
+			if( g_hColors.GetString(sTempL, sTempL, sizeof(sTempL)) )
+			{
+				SetVariantString(sTempL);
+				AcceptEntityInput(entity, "color");
+				setCol = true;
+			}
+		#endif
 	}
 	else if( args == 1 && strncmp(sArg, "bow", 4, false) == 0 )
 	{
@@ -1369,18 +1392,23 @@ void CommandLight(int client, int args, const char[] sArg, bool rainbow = false)
 	{
 		char sTempL[12];
 
-		// Completely random color
-		// Format(sTempL, sizeof(sTempL), "%d %d %d", GetRandomInt(20, 255), GetRandomInt(20, 255), GetRandomInt(20, 255));
-
-		// Random color from list
-		int size = g_hSnapColors.Length;
-		g_hSnapColors.GetKey(GetRandomInt(0, size - 1), sTempL, sizeof(sTempL));
-		if( g_hColors.GetString(sTempL, sTempL, sizeof(sTempL)) )
-		{
+		#if COMPLETELY_RANDOM
+			// Completely random color
+			Format(sTempL, sizeof(sTempL), "%d %d %d", GetRandomInt(20, 255), GetRandomInt(20, 255), GetRandomInt(20, 255));
 			SetVariantString(sTempL);
 			AcceptEntityInput(entity, "color");
 			setCol = true;
-		}
+		#else
+			// Random color from list
+			int size = g_hSnapColors.Length;
+			g_hSnapColors.GetKey(GetRandomInt(0, size - 1), sTempL, sizeof(sTempL));
+			if( g_hColors.GetString(sTempL, sTempL, sizeof(sTempL)) )
+			{
+				SetVariantString(sTempL);
+				AcceptEntityInput(entity, "color");
+				setCol = true;
+			}
+		#endif
 	}
 	else if( flagc && args == 1 && strncmp(sArg, "bow", 4, false) == 0 )
 	{
