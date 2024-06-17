@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.32"
+#define PLUGIN_VERSION 		"2.33"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,9 @@
 
 ========================================================================================
 	Change Log:
+
+2.33 (17-Jun-2024)
+	- Added "Random" and "Rainbow" to the menu. Requested by "JustMadMan".
 
 2.32 (21-Apr-2024)
 	- Fixed the "l4d_flashlight_random" cvar not giving bots random colors if saving was enabled. Thanks to "kochiurun119" for reporting.
@@ -478,6 +481,8 @@ void CreateColors()
 	// Colors
 	g_hColors = new StringMap();
 
+	AddColorItem("random",		"0");
+	AddColorItem("rainbow",		"1");
 	AddColorItem("red",			"255 0 0");
 	AddColorItem("green",		"0 255 0");
 	AddColorItem("blue",		"0 0 255");
@@ -523,7 +528,25 @@ int Menu_Light(Menu menu, MenuAction action, int client, int index)
 		{
 			char sColor[12];
 			menu.GetItem(index, sColor, sizeof(sColor));
-			CommandLight(client, 3, sColor);
+			if( strcmp(sColor, "0") == 0 )
+			{
+				CommandLight(client, 0, "", false, true);
+			}
+			else if( strcmp(sColor, "1") == 0 )
+			{
+				if( g_iCvarRainbow == 3 || g_iCvarRainbow == GetClientTeam(client) - 1 )
+				{
+					CommandLight(client, 0, "", true);
+				}
+				else
+				{
+					CPrintToChat(client, "[SM] %T.", "No Access", client);
+				}
+			}
+			else
+			{
+				CommandLight(client, 3, sColor);
+			}
 			g_hMenu.DisplayAt(client, 7 * RoundToFloor(index / 7.0), 0);
 		}
 	}
@@ -603,6 +626,7 @@ void ConVarChanged_LightAlpha(Handle convar, const char[] oldValue, const char[]
 void GetCvars()
 {
 	char sTemp[16];
+	int rainbow = g_iCvarRainbow;
 
 	g_iCvarAlpha = g_hCvarAlpha.IntValue;
 	g_iCvarAlphas = g_hCvarAlphas.IntValue;
@@ -627,6 +651,15 @@ void GetCvars()
 		g_iCvarColor = StringToInt(sColors[0]);
 		g_iCvarColor += 256 * StringToInt(sColors[1]);
 		g_iCvarColor += 65536 * StringToInt(sColors[2]);
+	}
+
+	if( (g_iCvarRainbow && !rainbow) || (!g_iCvarRainbow && rainbow) )
+	{
+		delete g_hColors;
+		delete g_hMenu;
+		delete g_hSnapColors;
+
+		CreateColors();
 	}
 }
 
@@ -866,10 +899,11 @@ Action TimerDelayCreateLight(Handle timer, int client)
 						delete g_hSnapColors;
 					#else
 						int size = g_hSnapColors.Length;
+						int pos = g_iCvarRainbow ? 2 : 1;
 
 						char sTemp[32];
 
-						g_hSnapColors.GetKey(GetRandomInt(0, size - 1), sTemp, sizeof(sTemp));
+						g_hSnapColors.GetKey(GetRandomInt(pos, size - 1), sTemp, sizeof(sTemp));
 						if( g_hColors.GetString(sTemp, sTemp, sizeof(sTemp)) )
 						{
 							char sColors[3][4];
@@ -1057,7 +1091,9 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 		#else
 			// Random color from list
 			int size = g_hSnapColors.Length;
-			g_hSnapColors.GetKey(GetRandomInt(0, size - 1), sTempL, sizeof(sTempL));
+			int pos = g_iCvarRainbow ? 2 : 1;
+
+			g_hSnapColors.GetKey(GetRandomInt(pos, size - 1), sTempL, sizeof(sTempL));
 			if( g_hColors.GetString(sTempL, sTempL, sizeof(sTempL)) )
 			{
 				SetVariantString(sTempL);
@@ -1066,7 +1102,7 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 			}
 		#endif
 	}
-	else if( args == 1 && strncmp(sArg, "bow", 4, false) == 0 )
+	else if( args == 1 && (strncmp(sArg, "bow", 4, false) == 0 || strncmp(sArg, "rainbow", 8, false) == 0) )
 	{
 		rainbow = true;
 	}
@@ -1278,7 +1314,7 @@ Action CmdLightCommand(int client, int args)
 	return Plugin_Handled;
 }
 
-void CommandLight(int client, int args, const char[] sArg, bool rainbow = false)
+void CommandLight(int client, int args, const char[] sArg, bool rainbow = false, bool random = false)
 {
 	// Must be valid
 	if( !client || !IsClientInGame(client) )
@@ -1388,7 +1424,7 @@ void CommandLight(int client, int args, const char[] sArg, bool rainbow = false)
 	bool setCol;
 
 	// Toggle or set light color and turn on.
-	if( flagc && args == 1 && strncmp(sArg, "rand", 4, false) == 0 )
+	if( flagc && (random || (args == 1 && strncmp(sArg, "rand", 4, false) == 0)) )
 	{
 		char sTempL[12];
 
@@ -1401,7 +1437,9 @@ void CommandLight(int client, int args, const char[] sArg, bool rainbow = false)
 		#else
 			// Random color from list
 			int size = g_hSnapColors.Length;
-			g_hSnapColors.GetKey(GetRandomInt(0, size - 1), sTempL, sizeof(sTempL));
+			int pos = g_iCvarRainbow ? 2 : 1;
+
+			g_hSnapColors.GetKey(GetRandomInt(pos, size - 1), sTempL, sizeof(sTempL));
 			if( g_hColors.GetString(sTempL, sTempL, sizeof(sTempL)) )
 			{
 				SetVariantString(sTempL);
@@ -1410,7 +1448,7 @@ void CommandLight(int client, int args, const char[] sArg, bool rainbow = false)
 			}
 		#endif
 	}
-	else if( flagc && args == 1 && strncmp(sArg, "bow", 4, false) == 0 )
+	else if( flagc && args == 1 && (strncmp(sArg, "bow", 4, false) == 0 || strncmp(sArg, "rainbow", 8, false) == 0) )
 	{
 		rainbow = true;
 	}
@@ -1419,11 +1457,19 @@ void CommandLight(int client, int args, const char[] sArg, bool rainbow = false)
 		char sTempL[12];
 
 		if( g_hColors.GetString(sArg, sTempL, sizeof(sTempL)) == false )
+		{
 			sTempL = "-1 -1 -1";
-
-		SetVariantString(sTempL);
-		AcceptEntityInput(entity, "color");
-		setCol = true;
+		}
+		else if( strcmp(sTempL, "0") == 0 )
+		{
+			rainbow = true;
+		}
+		else
+		{
+			SetVariantString(sTempL);
+			AcceptEntityInput(entity, "color");
+			setCol = true;
+		}
 	}
 	else if( flagc && args == 3 )
 	{
