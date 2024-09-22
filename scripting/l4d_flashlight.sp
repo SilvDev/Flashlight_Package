@@ -18,7 +18,7 @@
 
 
 
-#define PLUGIN_VERSION 		"2.33"
+#define PLUGIN_VERSION 		"2.34"
 
 /*======================================================================================
 	Plugin Info:
@@ -31,6 +31,10 @@
 
 ========================================================================================
 	Change Log:
+
+2.34 (22-Sep-2024)
+	- Fixed color names not working for the flashlight commands. Thanks to "KadabraZz" for reporting.
+	- Now the color names input are not case sensitive.
 
 2.33 (17-Jun-2024)
 	- Added "Random" and "Rainbow" to the menu. Requested by "JustMadMan".
@@ -506,6 +510,7 @@ void AddColorItem(char[] sName, const char[] sColor)
 
 	sName[0] = CharToUpper(sName[0]);
 	g_hMenu.AddItem(sColor, sName);
+	sName[0] = CharToLower(sName[0]); // For whatever reason, if this isn't set to lower, next time the function is called all sName strings will have a capital letter instead.
 }
 
 Action CmdLightMenu(int client, int args)
@@ -653,10 +658,10 @@ void GetCvars()
 		g_iCvarColor += 65536 * StringToInt(sColors[2]);
 	}
 
-	if( (g_iCvarRainbow && !rainbow) || (!g_iCvarRainbow && rainbow) )
+	if( !g_iCvarRainbow && rainbow )
 	{
-		delete g_hColors;
 		delete g_hMenu;
+		delete g_hColors;
 		delete g_hSnapColors;
 
 		CreateColors();
@@ -1024,7 +1029,7 @@ Action CmdLightClient(int client, int args)
 	return Plugin_Handled;
 }
 
-void CommandForceLight(int client, int target, int args, const char[] sArg)
+void CommandForceLight(int client, int target, int args, char[] sArg)
 {
 	// Wrong number of arguments
 	if( args != 0 && args != 1 && args != 3 )
@@ -1109,6 +1114,8 @@ void CommandForceLight(int client, int target, int args, const char[] sArg)
 	else if( args == 1 )
 	{
 		char sTempL[12];
+
+		LowerCaseString(sArg);
 
 		if( g_hColors.GetString(sArg, sTempL, sizeof(sTempL)) == false )
 			sTempL = "-1 -1 -1";
@@ -1314,7 +1321,7 @@ Action CmdLightCommand(int client, int args)
 	return Plugin_Handled;
 }
 
-void CommandLight(int client, int args, const char[] sArg, bool rainbow = false, bool random = false)
+void CommandLight(int client, int args, char[] sArg, bool rainbow = false, bool random = false)
 {
 	// Must be valid
 	if( !client || !IsClientInGame(client) )
@@ -1423,7 +1430,7 @@ void CommandLight(int client, int args, const char[] sArg, bool rainbow = false,
 
 	bool setCol;
 
-	// Toggle or set light color and turn on.
+	// Toggle or set light color and turn on./
 	if( flagc && (random || (args == 1 && strncmp(sArg, "rand", 4, false) == 0)) )
 	{
 		char sTempL[12];
@@ -1455,6 +1462,8 @@ void CommandLight(int client, int args, const char[] sArg, bool rainbow = false,
 	else if( flagc && args == 1 )
 	{
 		char sTempL[12];
+
+		LowerCaseString(sArg);
 
 		if( g_hColors.GetString(sArg, sTempL, sizeof(sTempL)) == false )
 		{
@@ -1807,4 +1816,14 @@ void CPrintToChat(int client, char[] message, any ...)
 	ReplaceString(buffer, sizeof(buffer), "{green}",		"\x04"); // Actually orange in L4D2, but replicating colors.inc behaviour
 	ReplaceString(buffer, sizeof(buffer), "{olive}",		"\x05");
 	PrintToChat(client, buffer);
+}
+
+void LowerCaseString(char[] sTemp)
+{
+	int len = strlen(sTemp);
+
+	for( int i = 0; i < len; i++ )
+	{
+		sTemp[i] = CharToLower(sTemp[i]);
+	}
 }
